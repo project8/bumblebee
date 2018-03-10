@@ -118,9 +118,9 @@ class CRES_RightCylinder_Cavity:
         else: #TE
             te_zero = bessprime_zeros[n][m]
             kr = te_zero/self.radius
-            Er = (-I*w*mu*n/(kr**2*r) * np.exp(I*n*phi) * jv(n, kr*r)
+            Er = (-I*w*mu*n/(kr**2*r) * np.cos(n*phi) * jv(n, kr*r)
                   *(-I*np.sin(kz*z)))
-            Ephi = (-I*w*mu/kr*norm * np.exp(I*n*phi) * jvp(n, kr*r)
+            Ephi = (-I*w*mu/kr*norm * np.sin(n*phi) * jvp(n, kr*r)
                     * (-I*np.sin(kz*z)))
             Ez = np.zeros_like(Er)
         # TODO normalize fields so that int psi * psi* dv = 2/eps
