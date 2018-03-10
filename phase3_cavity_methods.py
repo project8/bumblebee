@@ -110,10 +110,10 @@ class CRES_RightCylinder_Cavity:
         if tm_or_te == 0: #TM
             tm_zero = bess_zeros[n][m]
             kr = tm_zero/self.radius
-            Ez = norm * np.exp(I*n*phi) * jv(n, kr*r) * np.cos(kz*z)
-            Er = (-I*kz/kr*norm * np.exp(I*n*phi) * jvp(n, kr*r)
+            Ez = norm * np.sin(n*phi) * jv(n, kr*r) * np.cos(kz*z)
+            Er = (-I*kz/kr*norm * np.sin(n*phi) * jvp(n, kr*r)
                   * (-I*np.sin(kz*z)))
-            Ephi = (-I*kz*n/(kr**2*r)*norm * np.exp(I*n*phi) * jv(n, kr*r)
+            Ephi = (-I*kz*n/(kr**2*r)*norm * np.cos(n*phi) * jv(n, kr*r)
                     * (-I*np.sin(kz*z)))
         else: #TE
             te_zero = bessprime_zeros[n][m]
