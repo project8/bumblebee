@@ -103,8 +103,10 @@ class CRES_RightCylinder_Cavity:
 
         tm_or_te, n, m, l = modeid
         w = 2*pi*self.mode_freqs[modeid]
-        #TODO do TM mode normalization
 
+        if tm_or_te ==0:
+            #TODO do TM mode normalization. For now, everything I am looking at doesn't couple to TM modes.
+            return 1
         if tm_or_te ==1:
             #TODO make the integration look prettier
             te_zero = bessprime_zeros[n][m]
@@ -135,8 +137,8 @@ class CRES_RightCylinder_Cavity:
         else: #TE
             te_zero = bessprime_zeros[n][m]
             kr = te_zero/self.radius
-            Er = -w*mu*n/(kr**2*r) * np.cos(n*phi) * jv(n, kr*r) *np.sin(kz*z)
-            Ephi = -w*mu/kr*norm * np.sin(n*phi) * jvp(n, kr*r) * np.sin(kz*z)
+            Er = -norm*w*mu*n/(kr**2*r) * np.cos(n*phi) * jv(n, kr*r) *np.sin(kz*z)
+            Ephi = -norm*w*mu/kr * np.sin(n*phi) * jvp(n, kr*r) * np.sin(kz*z)
             Ez = np.zeros_like(Er)
         return (Er, Ephi, Ez)
 
@@ -183,33 +185,37 @@ class CRES_RightCylinder_Cavity:
         A = w**2 * np.dot(pe,np.conjugate(E_xe))/(2*(w**2-w0**2+I*w*w0*inv_q))
         return A
 
-    def precalculate_antenna_mode_couplings(self):
+    def precalculate_antenna_mode_couplings(self, freq_mode_list = None):
         """Basically, just calculate Psi dot d for all antennas and modes, and
         turn that into a matrix. The first index (row number) of the matrix will
         refer to the mode label. The second index (column number) will refer to
         the antenna number."""
-        n_modes = len(self.sorted_freqs_modes)
+        if freq_mode_list == None:
+            freq_mode_list = self.sorted_freqs_modes
+        n_modes = len(freq_mode_list)
         n_antennas = len(self.antenna_positions)
         self.Psi_dot_d = np.zeros((n_modes, n_antennas), dtype=np.complex_)
         for i in range(n_modes):
             for j in range(n_antennas):
                 xj = self.antenna_positions[j]
                 dj = self.antenna_dipoles[j]
-                E_xj = self.get_mode_e_field(self.sorted_freqs_modes[i][1], xj)
+                E_xj = self.get_mode_e_field(freq_mode_list[i][1], xj)
                 #print("Field at antenna {}".format(E_xj))
                 self.Psi_dot_d[i,j] = np.dot(dj, E_xj)
         return self.Psi_dot_d
 
-    def calculate_antenna_voltages(self, electron_x, electron_dipole, frequency):
-        n_modes = len(self.sorted_freqs_modes)
+    def calculate_antenna_voltages(self, electron_x, electron_dipole, frequency, freq_mode_list = None):
+        if freq_mode_list == None:
+            freq_mode_list = self.sorted_freqs_modes
+        n_modes = len(freq_mode_list)
         A = np.zeros(n_modes, dtype=np.complex_)
         for i in range(n_modes):
-            A[i] = self.calculate_source_mode_excitation(self.sorted_freqs_modes[i][1],
+            A[i] = self.calculate_source_mode_excitation(freq_mode_list[i][1],
                                                          electron_x,
                                                          electron_dipole,
                                                          frequency)
-        # for i in range(n_modes):
-            # print('{0}\t{1.real:.2E} + {1.imag:.2E}i \t {2:.3f} GHz'.format(self.sorted_freqs_modes[i][1], A[i], self.sorted_freqs_modes[i][0]/1e9))
+#        for i in range(n_modes):
+#            print('{0}\t{1.real:.2E} + {1.imag:.2E}i \t {2:.3f} GHz'.format(self.sorted_freqs_modes[i][1], A[i], self.sorted_freqs_modes[i][0]/1e9))
         self.antenna_voltage = np.dot(A.T,self.Psi_dot_d)
         return self.antenna_voltage
 
@@ -345,11 +351,11 @@ class CRES_RightCylinder_Cavity:
 
 
     def field_map_2d_zslice(self, rel_freqs_modes, z, electron_x,
-                            electron_dipole, freq):
+                            electron_dipole, freq, plotz=True):
         """For a fixed z, plot the field as a function of r and phi"""
         length = self.length
         phi = np.arange(0,2*pi, self.angular_resolution)
-        r = np.arange(0.001, self.radius, self.linear_resolution)
+        r = np.arange(0.0001, self.radius, self.linear_resolution)
         phiphi, rr = np.meshgrid(phi, r)
         zslice = [np.zeros_like(phiphi, dtype=np.complex_),
                   np.zeros_like(phiphi, dtype=np.complex_),
@@ -367,43 +373,66 @@ class CRES_RightCylinder_Cavity:
             for i in range(len(zslice_mode)):
                 zslice[i] += zslice_mode[i]
         zslice_real = np.real(zslice)
-
-        cm = 'bwr'
         scale = abs(max(zslice_real.min(), zslice_real.max(), key=abs))
-        fig, ax = plt.subplots(1,3, figsize=(8,3.5),
-                               subplot_kw= dict(projection= 'polar'))
-        ax[0].pcolormesh(phi, r, zslice_real[0], cmap = cm,
-                       vmin = -scale, vmax=scale)
-        ax[0].set_yticklabels([])
-        ax[0].grid()
-        ax[0].set_title('Er', y = 1.2)
+        cm = 'bwr'
 
-        ax[1].pcolormesh(phi, r, zslice_real[1], cmap = cm,
-                       vmin = -scale, vmax=scale)
-        ax[1].set_yticklabels([])
-        ax[1].grid()
-        ax[1].set_title('Ephi', y = 1.2)
+        if plotz:
+            fig, ax = plt.subplots(1,3, figsize=(8,3.5),
+                                   subplot_kw= dict(projection= 'polar'))
+            ax[0].pcolormesh(phi, r, zslice_real[0], cmap = cm,
+                           vmin = -scale, vmax=scale)
+            ax[0].set_yticklabels([])
+            ax[0].grid()
+            ax[0].set_title('Er', y = 1.2)
 
-        im = ax[2].pcolormesh(phi, r, zslice_real[2], cmap = cm,
-                       vmin = -scale, vmax=scale)
-        ax[2].set_yticklabels([])
-        ax[2].grid()
-        ax[2].set_title('Ez', va = 'bottom', y = 1.2)
-        fig.subplots_adjust(wspace=0.8)
+            ax[1].pcolormesh(phi, r, zslice_real[1], cmap = cm,
+                           vmin = -scale, vmax=scale)
+            ax[1].set_yticklabels([])
+            ax[1].grid()
+            ax[1].set_title('Ephi', y = 1.2)
 
-        fig.suptitle(r'f = {0:.3f} GHz, z = {1:.3f} m, $r_e$ = {2[0]} $\phi_e$ = {2[1]} $z_e$ = {2[2]}'.format(freq/1e9, z, electron_x),
-                     ha = 'center',
-                     va='top', x=0.43)
-        fig.tight_layout()
-        fig.colorbar(im, ax=ax.ravel().tolist(), shrink = 0.5)
+            im = ax[2].pcolormesh(phi, r, zslice_real[2], cmap = cm,
+                           vmin = -scale, vmax=scale)
+            ax[2].set_yticklabels([])
+            ax[2].grid()
+            ax[2].set_title('Ez', va = 'bottom', y = 1.2)
+            fig.subplots_adjust(wspace=0.8)
+
+            fig.suptitle(r'f = {0:.3f} GHz, z = {1:.3f} m, $r_e$ = {2[0]} $\phi_e$ = {2[1]} $z_e$ = {2[2]}'.format(freq/1e9, z, electron_x), ha = 'center', va='top', x=0.43)
+            fig.tight_layout()
+            fig.colorbar(im, ax=ax.ravel().tolist(), shrink = 0.5)
+
+        if not plotz:
+            fig, ax = plt.subplots(1,2, figsize=(8,3.5),
+                                   subplot_kw= dict(projection= 'polar'))
+            ax[0].pcolormesh(phi, r, zslice_real[0], cmap = cm,
+                           vmin = -scale, vmax=scale)
+            ax[0].set_yticklabels([])
+            ax[0].grid()
+            ax[0].set_title('Er', y = 1.15, va='bottom')
+            ax[0].plot(electron_x[1], electron_x[0], 'o', color='k')
+
+            im = ax[1].pcolormesh(phi, r, zslice_real[1], cmap = cm,
+                                  vmin = -scale, vmax=scale)
+            ax[1].set_yticklabels([])
+            ax[1].grid()
+            ax[1].set_title('Ephi',y = 1.15, va='bottom')
+            print(electron_x)
+            ax[1].plot(electron_x[1], electron_x[0], 'o', color='k')
+
+            fig.subplots_adjust(wspace=0.8)
+            fig.suptitle(r'f = {0:.3f} GHz, z = {1:.3f} m, $r_e$ = {2[0]} $\phi_e$ = {2[1]} $z_e$ = {2[2]}'.format(freq/1e9, z, electron_x),ha = 'center', va='top', x=0.43, y=1.05)
+
+            fig.tight_layout()
+            fig.colorbar(im, ax=ax.ravel().tolist(), shrink = 0.5)
+
         return zslice
 
-
     def field_map_2d_phislice(self, rel_freqs_modes, phi, electron_x,
-                              electron_dipole, freq):
+                              electron_dipole, freq, plotz=True):
         """For a fixed phi, plot the field as a function of r and z"""
         z = np.arange(0, self.length, self.linear_resolution)
-        r = np.arange(0.001, self.radius, self.linear_resolution)
+        r = np.arange(0.00001, self.radius, self.linear_resolution)
         zz, rr = np.meshgrid(z, r)
         phi_slice = [np.zeros_like(zz, dtype=np.complex_),
                      np.zeros_like(zz, dtype=np.complex_),
@@ -426,29 +455,57 @@ class CRES_RightCylinder_Cavity:
         cm = 'bwr'
         scale = abs(max(phi_slice_real.min(), phi_slice_real.max(), key=abs))
 
-        f, (ax1, ax2, ax3) = plt.subplots(1, 3, sharey = True, figsize=(16,3.1))
-        ax1.set_aspect('equal')
-        ax1.pcolormesh(z, r, phi_slice_real[0], cmap = cm,
-                       vmin = -scale, vmax=scale)
-        ax1.set_title('Er')
-        ax1.set_xlabel('z [m]')
-        ax1.set_ylabel('r [m]')
+        if plotz:
+            f, (ax1, ax2, ax3) = plt.subplots(1, 3, sharey = True, figsize=(16,3.1))
+            ax1.set_aspect('equal')
+            ax1.pcolormesh(z, r, phi_slice_real[0], cmap = cm,
+                           vmin = -scale, vmax=scale)
+            ax1.set_title('Er')
+            ax1.set_xlabel('z [m]')
+            ax1.set_ylabel('r [m]')
+    
+            ax2.pcolormesh(z, r, phi_slice_real[1], cmap = cm,
+                           vmin = -scale, vmax=scale)
+            ax2.set_aspect('equal')
+            ax2.set_title('Ephi')
+            ax2.set_xlabel('z [m]')
+    
+    
+            im3 = ax3.pcolormesh(z, r, phi_slice_real[2], cmap = cm,
+                           vmin = -scale, vmax=scale)
+            ax3.set_aspect('equal')
+            ax3.set_title('Ez')
+            ax3.set_xlabel('z [m]')
+            plt.suptitle('f = {0:.3f} GHz, phi = {1:.2f}, $r_e$ = {2[0]} $\phi_e$ = {2[1]} $z_e$ = {2[2]}'.format(freq/1e9, phi, electron_x),
+                         y=1)
+            plt.tight_layout()
+            f.colorbar(im3)
 
-        ax2.pcolormesh(z, r, phi_slice_real[1], cmap = cm,
-                       vmin = -scale, vmax=scale)
-        ax2.set_aspect('equal')
-        ax2.set_title('Ephi')
-        ax2.set_xlabel('z [m]')
+        if not plotz:
+            f, (ax1, ax2) = plt.subplots(2, 1, sharex = True)
+            ax1.pcolormesh(z, r, phi_slice_real[0], cmap = cm,
+                           vmin = -scale, vmax=scale)
+            ax1.plot(electron_x[2], electron_x[0], 'o', color='k', ms=5)
+            ax1.set_aspect('equal')
+            ax1.set_title('Er')
+            ax1.set_ylabel('r [m]')
+            ax1.set_ylim(ymin=-0.01, ymax=self.radius)
+
+            ax2.set_aspect('equal')
+            im2 = ax2.pcolormesh(z, r, phi_slice_real[1], cmap = cm,
+                                 vmin = -scale, vmax=scale)
+            ax2.plot(electron_x[2], electron_x[0], 'o', color='k', ms=5)
+            ax2.set_title('Ephi')
+            ax2.set_ylabel('r [m]')
+            ax2.set_xlabel('z [m]')
+            ax2.set_ylim(ymin=-0.01, ymax=self.radius)
+
+            plt.suptitle('Mode = {}, f = {:.3f} GHz, phi = {:.2f} '.format(modeid, freq/1e9, phi),
+                         y=1)
+            plt.subplots_adjust(bottom=0.1, right=0.8, top=0.9)
+            cax = plt.axes([0.85, 0.1, 0.075, 0.8])
+            plt.colorbar(im2, cax=cax)
 
 
-        im3 = ax3.pcolormesh(z, r, phi_slice_real[2], cmap = cm,
-                       vmin = -scale, vmax=scale)
-        ax3.set_aspect('equal')
-        ax3.set_title('Ez')
-        ax3.set_xlabel('z [m]')
-        plt.suptitle('f = {0:.3f} GHz, phi = {1:.2f}, $r_e$ = {2[0]} $\phi_e$ = {2[1]} $z_e$ = {2[2]}'.format(freq/1e9, phi, electron_x),
-                     y=1)
-        plt.tight_layout()
-        f.colorbar(im3)
         return phi_slice
 
